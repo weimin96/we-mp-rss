@@ -1,0 +1,42 @@
+# Staging-only, never expose publicly before closing the template execution risk.
+services:
+  we-mp-rss:
+    image: local/we-mp-rss:source-9fd4edb
+    build:
+      context: ..
+      dockerfile: deploy/security/Dockerfile
+    restart: "no"
+    ports:
+      - "127.0.0.1:18001:8001"
+    environment:
+      USERNAME: admin
+      PASSWORD: ${WE_RSS_ADMIN_PASSWORD:?set a unique strong admin password}
+      SECRET_KEY: ${WE_RSS_SECRET_KEY:?set a unique random secret key}
+      DB: sqlite:///./data/we_mp_rss.db
+      REDIS_SERVER_ENABLED: "False"
+      REDIS_URL: ""
+      AUTO_RELOAD: "False"
+      ENABLE_JOB: "False"
+      GATHER.CONTENT: "False"
+      HEADLESS: "true"
+      TZ: Asia/Shanghai
+      CORS_ALLOWED_ORIGINS: ""
+    volumes:
+      - we_mprss_data:/app/data
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.0
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=256m
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+volumes:
+  we_mprss_data:

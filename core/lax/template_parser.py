@@ -1,5 +1,7 @@
+import ast
 import re
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Union
 # """
 # 模板引擎使用示例
@@ -854,6 +856,40 @@ class TemplateParser:
         }
         return safe_builtins
 
+    def _safe_eval(self, expr: str, context: Dict[str, Any]) -> Any:
+        """Evaluate a restricted expression, never arbitrary Python statements."""
+        if len(expr) > 2048:
+            raise ValueError("Template expression is too long")
+        tree = ast.parse(expr, mode="eval")
+        allowed = (
+            ast.Expression, ast.Load, ast.Constant, ast.Name, ast.Attribute,
+            ast.Subscript, ast.Slice, ast.Tuple, ast.List, ast.Dict,
+            ast.BinOp, ast.UnaryOp, ast.BoolOp, ast.Compare, ast.Call,
+            ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod,
+            ast.Not, ast.UAdd, ast.USub, ast.And, ast.Or,
+            ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+            ast.In, ast.NotIn, ast.Is, ast.IsNot,
+        )
+        exposed = {**self._get_safe_globals(), **self.custom_functions}
+        nodes = list(ast.walk(tree))
+        if len(nodes) > 128:
+            raise ValueError("Template expression is too complex")
+        for node in nodes:
+            if not isinstance(node, allowed):
+                raise ValueError("Unsupported template expression")
+            if isinstance(node, ast.Name) and node.id.startswith("_"):
+                raise ValueError("Private identifier is forbidden")
+            if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
+                raise ValueError("Private attribute is forbidden")
+            if isinstance(node, ast.Call):
+                if (not isinstance(node.func, ast.Name) or
+                        node.func.id not in exposed or
+                        not callable(exposed[node.func.id]) or
+                        node.keywords):
+                    raise ValueError("Unapproved template function")
+        return eval(compile(tree, "<template>", "eval"),
+                    {"__builtins__": {}, **exposed}, context)
+
     def _is_safe_expression(self, expr: str) -> bool:
         """Check if an expression contains potentially dangerous operations."""
         forbidden = [
@@ -872,6 +908,9 @@ class TemplateParser:
         created during evaluation.
         """
         try:
+            if condition.endswith(" is defined"):
+                name = condition[:-11].strip()
+                return name in context, context
             if not self._is_safe_expression(condition):
                 raise ValueError(f"Potentially dangerous expression: {condition}")
                 
@@ -905,34 +944,13 @@ class TemplateParser:
             # Make a copy of context to avoid modifying the original
             local_vars = context.copy()
             
-            # Handle multi-line code blocks
+            # Never execute multiline code embedded in a template.
             if '\n' in condition.strip():
-                # Compile and execute the code block in restricted environment
-                code = compile(condition, '<string>', 'exec')
-                exec(code, eval_globals, local_vars)
-                # The last expression's value should be in __result__
-                result = bool(local_vars.get('__result__', False))
-                # Return result and updated context (excluding special vars)
-                updated_context = {k: v for k, v in local_vars.items() 
-                                 if not k.startswith('__') and k not in self.custom_functions}
-                
-                # Debug output
-                print(f"DEBUG - Condition evaluation result: {result}")
-                print(f"DEBUG - Local vars after execution: {local_vars.keys()}")
-                print(f"DEBUG - Updated context to return: {updated_context.keys()}")
-                
-                # Ensure all calculated variables are included
-                for k, v in local_vars.items():
-                    if (not k.startswith('__') and 
-                        k not in self.custom_functions and 
-                        k not in updated_context):
-                        updated_context[k] = v
-                
-                return result, updated_context
-            
+                raise ValueError("Multiline conditions are disabled")
+
             # Handle function calls with = prefix
             if condition.startswith('='):
-                result = bool(eval(condition[1:], eval_globals, local_vars))
+                result = bool(self._safe_eval(condition[1:], local_vars))
                 return result, local_vars
             
             # Handle nested attribute access (e.g. user.is_admin)
@@ -959,7 +977,7 @@ class TemplateParser:
                 return bool(value), local_vars
                 
             # Evaluate other expressions
-            result = bool(eval(condition, eval_globals, local_vars))
+            result = bool(self._safe_eval(condition, local_vars))
             return result, local_vars
             
         except Exception:
@@ -1030,7 +1048,7 @@ class TemplateParser:
                 raise ValueError("Potentially dangerous expression detected")
             
             safe_globals = self._get_safe_globals()
-            return eval(iterable, safe_globals, context)
+            return self._safe_eval(iterable, context)
         except Exception:
             return []
             
@@ -1043,25 +1061,27 @@ class TemplateParser:
             content = self._load_include_file(filename)
             return content
         
-        # Recursively process includes
-        while include_pattern.search(template):
+        # Bound nested includes to prevent infinite expansion.
+        for _ in range(10):
+            if not include_pattern.search(template):
+                return template
             template = include_pattern.sub(replace_include, template)
-        
-        return template
-    
+        raise ValueError("Too many nested template includes")
+
     def _load_include_file(self, filename: str) -> str:
         """Load content from an included template file."""
-        if self.template_dir:
-            file_path = os.path.join(self.template_dir, filename)
-        else:
-            file_path = filename
-        
+        if not self.template_dir:
+            return "[Error: Template includes require a template directory]"
+        root = Path(self.template_dir).resolve()
+        file_path = (root / filename).resolve()
+        if root not in file_path.parents or not file_path.is_file():
+            return "[Error: Template include outside template directory]"
+
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            # Recursively process includes in the included file
-            included_parser = TemplateParser(content, self.template_dir)
-            return included_parser._process_includes(content)
+            # Expansion is handled by the bounded loop in _process_includes.
+            return content
         except FileNotFoundError:
             return f"[Error: Include file '{filename}' not found]"
         except Exception as e:
@@ -1100,7 +1120,7 @@ class TemplateParser:
                     })
                     eval_globals = {**safe_globals, **self.custom_functions}
                     
-                    value = eval(value_expr, eval_globals, context)
+                    value = self._safe_eval(value_expr, context)
                     
                     # Store in context for future use
                     context[var_name] = value
@@ -1134,7 +1154,7 @@ class TemplateParser:
                     })
                     eval_globals = {**safe_globals, **self.custom_functions}
                     
-                    value = eval(value_expr, eval_globals, context)
+                    value = self._safe_eval(value_expr, context)
                     
                     # Create a new context with the local variable
                     # In let expressions, the variable is available within the current evaluation scope
@@ -1161,7 +1181,7 @@ class TemplateParser:
         eval_globals = {**safe_globals, **self.custom_functions}
         
         try:
-            return eval(expr, eval_globals, context)
+            return self._safe_eval(expr, context)
         except Exception as e:
             return f"[Calculation Error: {str(e)}]"
 

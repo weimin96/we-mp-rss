@@ -32,8 +32,6 @@ from driver.wx_api import get_qr_code #通过API登录
 from driver.wx import WX_API
 def ApiSuccess(data):
     if data != None:
-            print("\n登录结果:")
-            print(f"Token: {data['token']}")
             set_config("token",data['token'])
             cfg.reload()
     else:

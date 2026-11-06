@@ -1,4 +1,6 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from template_parser import TemplateParser
 
 class TestTemplateParser(unittest.TestCase):
@@ -114,6 +116,33 @@ class TestTemplateParser(unittest.TestCase):
  ]
 }"""
         self.assertEqual(result.strip().replace("\n", "").replace(" ", ""), expected.strip().replace("\n", "").replace(" ", ""))
+
+    def test_template_does_not_allow_object_introspection(self):
+        parser = TemplateParser('{{=().__class__.__mro__}}')
+        result = parser.render({})
+        self.assertIn('[Calculation Error:', result)
+
+    def test_template_does_not_allow_import_via_call(self):
+        parser = TemplateParser('{{=getattr(1, "__class__")}}')
+        self.assertIn('[Error:', parser.render({}))
+
+    def test_include_cannot_escape_template_root(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / 'templates'
+            root.mkdir()
+            (Path(temp_dir) / 'secret.txt').write_text('NOT_FOR_RSS')
+            parser = TemplateParser("{% include '../secret.txt' %}", str(root))
+            output = parser.render({})
+            self.assertNotIn('NOT_FOR_RSS', output)
+            self.assertIn('outside template directory', output)
+
+    def test_cyclic_include_is_bounded(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / 'repeat.txt').write_text("{% include 'repeat.txt' %}")
+            parser = TemplateParser("{% include 'repeat.txt' %}", str(root))
+            with self.assertRaises(ValueError):
+                parser.render({})
 
 if __name__ == '__main__':
     unittest.main()

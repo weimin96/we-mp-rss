@@ -13,8 +13,11 @@ import time
 import os
 from core.print import print_info, print_error
 def init_user(_db: Db):
+    password = os.getenv("PASSWORD")
+    if not password or password == "admin@123" or len(password) < 16:
+        raise RuntimeError("PASSWORD must be non-default and at least 16 characters")
     try:
-      username,password=os.getenv("USERNAME", "admin"),os.getenv("PASSWORD", "admin@123")
+      username=os.getenv("USERNAME", "admin")
       session=_db.get_session()
       
       # 检查用户是否已存在
@@ -39,8 +42,7 @@ def init_user(_db: Db):
           session.commit()
           print_info(f"初始化用户成功,请使用以下凭据登录：{username}")
     except Exception as e:
-        # print_error(f"Init error: {str(e)}")
-        pass
+        raise RuntimeError("Administrator initialization failed") from e
 def sync_models():
      # 同步模型到表结构
          from data_sync import DatabaseSynchronizer

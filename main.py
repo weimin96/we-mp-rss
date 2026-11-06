@@ -13,12 +13,8 @@ import uvicorn
 from core.print import print_warning, print_info, print_success
 import threading
 from driver.auth import start_auth_service   
-import os
 
 if __name__ == '__main__':
-    print("环境变量:")
-    for k,v in os.environ.items():
-        print(f"{k}={v}")
     if cfg.args.init=="True":
         import init_sys as init
         init.init()
