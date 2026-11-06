@@ -30,6 +30,7 @@
 - 实际匿名验收：`/api/v1/wx/articles/{article_id}` 和 `/api/v1/wx/mps/{mp_id}` 均返回 401；Nginx 已禁止匿名暴露的 `/api/v1/wx/github/`、`/api/v1/wx/proxy/`、`/api/v1/wx/tools/image/proxy`、`/api/v1/wx/tools/image/download/`、`/api/v1/wx/tools/export/download` 及 `/api/v1/wx/auth/password/` 路由。Nginx 阻断规则位于服务器原有配置中，需在重建 Nginx 部署时保留。
 - 受限数据卷权限已设为目录 `0700`、`wx.lic` 与 SQLite 数据库 `0600`。密钥轮换、禁用特权容器、Capabilities 全部移除和禁止提权仍然不足以抵御已获执行权限的容器进程。
 - **剩余重要风险**：容器内 TCP 测试能够连接宿主机私有地址 `172.22.25.205:6379` 的 Redis；当前 Docker 网络仍可出站访问内网。应迁移至单独安全维护的虚拟机/主机或设置经过验证的单向出站 ACL，禁止访问宿主机、内部数据库、元数据服务。宿主机 CentOS 7 已 EOL，运行服务前需有操作系统迁移/补丁计划。运行容器 `ReadonlyRootfs=false`，应在确认文件写入范围后启用只读根文件系统。
+- **匿名 RSS 白名单（2026-11-07）**：仅 `GET/HEAD https://werss.wiblog.cn/feed/MP_WXS_2391391020.xml` 免 Basic Auth；`/feed/all.xml`、其他 Feed、后台及 API 继续受现有策略保护。Nginx 把此地址固定代理至 `is_update=true`，覆盖客户端任意查询参数以避免将 RSS 订阅链接当作昂贵查询接口，并以 `application/rss+xml` 响应。每 IP 限制 10 次/分钟，突发 10 次；规则见 `deploy/security/nginx-public-douban-feed.conf`，Nginx 重新部署时需要保留并安装该片段及对应全局 rate-limit zone。
 
 ## 具备隔离环境与 Docker 时的人工构建步骤
 
