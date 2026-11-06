@@ -410,7 +410,7 @@ async def update_mps(
 @router.get("/{mp_id}", summary="获取公众号详情")
 async def get_mp(
     mp_id: str,
-    # current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_or_ak),
 ):
     session = DB.get_session()
     try:

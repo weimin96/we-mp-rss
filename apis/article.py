@@ -575,7 +575,7 @@ async def get_refresh_task_status(
 def get_article_detail(
     article_id: str,
     content: bool = Query(False),
-    # current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_or_ak),
 ):
     session = DB.get_session()
     try:

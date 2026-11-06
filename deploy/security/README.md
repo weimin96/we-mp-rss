@@ -26,6 +26,10 @@
 - 微信读书授权就绪后，先手动采集目标 Feed 验证全文、图片和 RSS，再添加合适的低频定时任务；不要在风控后进行密集重试。
 - 对微信文章 `img[data-src]` 缺少 `src` 的情况，已增加 RSS/HTML 图片修复；在已通过源码审核的本机基础镜像上，可使用 `deploy/security/Dockerfile.incremental` 快速叠加相关 Python 源码。迁移到新机器时仍使用完整的 `deploy/security/Dockerfile` 构建。
 - 自动增量：使用 `systemd` 的 `we-mp-rss-daily-douban.timer`，北京时间每天 02:10、06:10、10:10、14:10、18:10、22:10 查询一次最新文章（4 小时一次），`flock` 防重入，100 秒超时。不依赖 WeRSS Webhook 调度，内置 `ENABLE_JOB=False` 不变。微信读书 Cookie 过期时需在后台重新扫码；未配置任何自动绕过风控策略。
+- 安全复核（2026-11-07）：Nginx 已额外封闭匿名可访问的 Git 更新/回滚、通用代理、远程图片代理、导出下载接口；文章详情及公众号详情恢复鉴权依赖，防止绕过入口密码读取业务数据。宿主机 CentOS 7 已结束常规安全维护，不应认定为生产安全审计通过。
+- 实际匿名验收：`/api/v1/wx/articles/{article_id}` 和 `/api/v1/wx/mps/{mp_id}` 均返回 401；Nginx 已禁止匿名暴露的 `/api/v1/wx/github/`、`/api/v1/wx/proxy/`、`/api/v1/wx/tools/image/proxy`、`/api/v1/wx/tools/image/download/`、`/api/v1/wx/tools/export/download` 及 `/api/v1/wx/auth/password/` 路由。Nginx 阻断规则位于服务器原有配置中，需在重建 Nginx 部署时保留。
+- 受限数据卷权限已设为目录 `0700`、`wx.lic` 与 SQLite 数据库 `0600`。密钥轮换、禁用特权容器、Capabilities 全部移除和禁止提权仍然不足以抵御已获执行权限的容器进程。
+- **剩余重要风险**：容器内 TCP 测试能够连接宿主机私有地址 `172.22.25.205:6379` 的 Redis；当前 Docker 网络仍可出站访问内网。应迁移至单独安全维护的虚拟机/主机或设置经过验证的单向出站 ACL，禁止访问宿主机、内部数据库、元数据服务。宿主机 CentOS 7 已 EOL，运行服务前需有操作系统迁移/补丁计划。运行容器 `ReadonlyRootfs=false`，应在确认文件写入范围后启用只读根文件系统。
 
 ## 具备隔离环境与 Docker 时的人工构建步骤
 
