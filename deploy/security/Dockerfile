@@ -15,11 +15,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
       bash ca-certificates libffi-dev libssl-dev build-essential \
       zlib1g-dev libsqlite3-dev libgdbm-dev libreadline-dev \
       procps curl \
     && rm -rf /var/lib/apt/lists/*
+
+ENV PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 
 COPY requirements.txt ./
 RUN python -m venv "/app/env_$(uname -m)" \
