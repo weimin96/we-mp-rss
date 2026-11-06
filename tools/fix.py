@@ -21,6 +21,8 @@ def fix_html(content:str):
         return ""
     # 先清理编码问题
     content = sanitize_utf8(content)
+    from core.content_images import hydrate_lazy_images
+    content = hydrate_lazy_images(content)
     from core.content_format import format_content
     from tools.mdtools.md2html import convert_markdown_to_html
     from tools.htmltools import htmltools

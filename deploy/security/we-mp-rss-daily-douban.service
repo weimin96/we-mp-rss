@@ -1,0 +1,11 @@
+[Unit]
+Description=WeRSS Daily Douban low-frequency WeRead incremental fetch
+Wants=network-online.target
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/we-mp-rss/source/deploy/security/run-daily-douban.sh
+TimeoutStartSec=130
+NoNewPrivileges=true

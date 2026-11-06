@@ -81,21 +81,9 @@ class RSS:
         return dt_obj.strftime('%a, %d %b %Y %H:%M:%S %z')
     
     def add_logo_prefix_to_urls(self, text: str) -> str:
-        """在字符串中所有http/https开头的图片URL前添加/static/res/logo/前缀
-        
-        Args:
-            text: 包含URL的原始字符串
-            
-        Returns:
-            处理后的字符串，所有图片URL前添加了前缀
-        """
-        import re
-        # try:
-        #     pattern = re.compile(r'(<img[^>]*src=["\'])(?!\/static\/res\/logo\/)([^"\']*)', re.IGNORECASE)
-        #     return pattern.sub(r'\1/static/res/logo/\2', text)
-        # except:
-        #     return text
-        return text
+        """Make article lazy-loaded images visible in RSS and cached previews."""
+        from core.content_images import hydrate_lazy_images
+        return hydrate_lazy_images(text)
        
     def generate_rss(self,rss_list: dict, title: str = "Mp-We-Rss", 
                     link: str = "https://github.com/rachelos/we-mp-rss",
@@ -301,6 +289,13 @@ class RSS:
         Raises:
             ValueError: 当扩展名不支持时
         """
+        # All output formats share the same repaired HTML content, without
+        # changing the original article records in the database.
+        rss_list = [
+            {**item, "content": self.add_logo_prefix_to_urls(item["content"])}
+            if item.get("content") else item
+            for item in rss_list
+        ]
         ext = ext.lower().strip('.')
         self.ext=ext
         if ext in ('rss', 'xml'):

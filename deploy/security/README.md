@@ -24,6 +24,8 @@
 - 改用 `weread_mp` 低频增量采集，需要到 `/weread` **另行扫码微信读书**。只抓最新一篇，不支持微信公众平台历史文章批量回补。
 - `GATHER.CONTENT_AUTO_CHECK=False` 禁止原有自动补抓进入耗时的浏览器提取逻辑；`ENABLE_JOB=False` 在微信读书授权和单篇采集验收完成前维持关闭。
 - 微信读书授权就绪后，先手动采集目标 Feed 验证全文、图片和 RSS，再添加合适的低频定时任务；不要在风控后进行密集重试。
+- 对微信文章 `img[data-src]` 缺少 `src` 的情况，已增加 RSS/HTML 图片修复；在已通过源码审核的本机基础镜像上，可使用 `deploy/security/Dockerfile.incremental` 快速叠加相关 Python 源码。迁移到新机器时仍使用完整的 `deploy/security/Dockerfile` 构建。
+- 自动增量：使用 `systemd` 的 `we-mp-rss-daily-douban.timer`，北京时间每天 02:10、06:10、10:10、14:10、18:10、22:10 查询一次最新文章（4 小时一次），`flock` 防重入，100 秒超时。不依赖 WeRSS Webhook 调度，内置 `ENABLE_JOB=False` 不变。微信读书 Cookie 过期时需在后台重新扫码；未配置任何自动绕过风控策略。
 
 ## 具备隔离环境与 Docker 时的人工构建步骤
 

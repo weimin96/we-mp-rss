@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll Daily Douban WeRead latest article every 4 hours
+
+[Timer]
+OnCalendar=*-*-* 02,06,10,14,18,22:10:00
+Persistent=false
+Unit=we-mp-rss-daily-douban.service
+
+[Install]
+WantedBy=timers.target
