@@ -1,7 +1,7 @@
-# Staging-only, never expose publicly before closing the template execution risk.
+# Source-built WeRSS deployment; expose only through the authenticated HTTPS proxy.
 services:
   we-mp-rss:
-    image: local/we-mp-rss:source-9fd4edb
+    image: local/we-mp-rss:source-9fd4edb-hardened
     build:
       context: ..
       dockerfile: deploy/security/Dockerfile
@@ -16,8 +16,17 @@ services:
       REDIS_SERVER_ENABLED: "False"
       REDIS_URL: ""
       AUTO_RELOAD: "False"
+      # Keep scheduled polling disabled until WeRead QR auth has been verified.
       ENABLE_JOB: "False"
-      GATHER.CONTENT: "False"
+      # Public-account backend endpoints now frequently return 200013 (rate limit).
+      # WeRead provides a low-frequency latest-article incremental alternative.
+      GATHER.MODEL: weread_mp
+      GATHER.CONTENT: "True"
+      GATHER.CONTENT_AUTO_CHECK: "False"
+      WEREAD_CONTENT_INTERVAL: "2"
+      RSS_FULL_CONTEXT: "True"
+      RSS_ADD_COVER: "True"
+      RSS_BASE_URL: https://werss.wiblog.cn/
       HEADLESS: "true"
       TZ: Asia/Shanghai
       CORS_ALLOWED_ORIGINS: ""

@@ -16,3 +16,19 @@ ref
 web_ui/node_modules
 qtserver/node_modules
 
+# Operator secrets must never enter Docker's build context or image layers.
+.env
+.env.*
+**/.env
+**/.env.*
+**/.edge-pass
+**/.ssh
+**/.ssh/**
+**/*.pem
+**/*.key
+config.yaml
+**/wx.lic
+**/*.db
+**/*.db-wal
+**/*.db-shm
+

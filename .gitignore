@@ -30,3 +30,5 @@ test.py
 .codeartsdoer
 # Source deployment local credentials
 deploy/security/.env.source
+deploy/security/.env.source.next
+deploy/security/.edge-pass

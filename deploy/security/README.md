@@ -1,4 +1,4 @@
-# WeRSS 源码构建安全审查（未批准上线）
+# WeRSS 源码构建与受限部署记录（未通过生产安全审计）
 
 源码版本：`9fd4edb2a9311bffa571db050f53f415705db294`（2026-10-21）。
 
@@ -11,14 +11,19 @@
 - `core/lax/template_parser.py` 原来允许 Python `eval`/`exec`，且文件包含无目录边界。安全分支用受限 AST 表达式校验、禁止执行多行语句、将包含限制于模板目录并限制展开次数。仍需进一步审计，不代表已经证明不存在其他代码执行入口。
 - 官方 Dockerfile 使用 `ghcr.io/rachelos/base-full:latest` 不透明可变基础镜像，并以 root 运行。本目录提供仅从公开 Python 基础镜像和源码构建的候选替代 Dockerfile，使用非 root 用户。
 - `requirements.txt` 版本固定但未锁定下载文件 SHA256；基础镜像尚未固定 digest，供应链完整性仍未完全验证。
+- 源码构建上下文必须排除 `deploy/security/.env.source`、`.edge-pass` 等凭证；安全分支 `.dockerignore` 已新增排除规则，Dockerfile 带有文件缺席断言。曾使用未排除凭证的旧构建需要移除旧镜像及其未使用的构建缓存。
 - GitHub Issue #485 报告容器内挖矿与持久化后门。入侵根因和镜像污染与否尚无公开定论；不能把本地静态扫描视为安全证明。
 
 ## 当前状态与边界
 
-- **未构建、未运行、未部署**。Gateway runner 无 Docker API 权限；已登记 Worker 不提供 Docker CLI。按 Gateway 规则，不应赋予 runner docker/root 权限来绕过限制。
-- `compose/docker-compose.source.yaml` 仅用于单独、无生产数据的隔离测试主机，绑定 `127.0.0.1:18001`；不挂载宿主 Docker Socket，不连接已有 Redis/MySQL，默认关闭抓取与后台任务。
+- 2026-11-07 已通过 Workdev 从源码构建并在 `8.138.90.56` 上启动**受限测试实例**，未完成生产安全审计；域名为 `https://werss.wiblog.cn`，通过 Nginx Basic Auth + WeRSS 后台登录保护。
+- Gateway runner 无 Docker API 权限；源码从 Workdev SSH 传入测试机并构建，不应扩张 Gateway Docker/root 权限。
+- `compose/docker-compose.source.yaml` 只绑定 `127.0.0.1:18001`；不挂载 Docker Socket，不使用现有 Redis/MySQL，定时采集默认关闭。Web 管理入口通过现有 Nginx HTTPS 代理发布。
 - 即使本配置限制能力，容器仍有网络出站访问：必须在单独 VM 上阻断对生产内网和元数据地址的访问，或先关闭网络进行无网络测试。
-- 不提供扫码、业务数据或常用微信凭证给尚未审查完的实例。
+- 微信公众平台扫码授权和「每日豆瓣」订阅已完成。旧版 `appmsgpublish` 返回 `200013` 频率限制，0 篇文章入库；单测 `free_publish` 未返回可用文章。
+- 改用 `weread_mp` 低频增量采集，需要到 `/weread` **另行扫码微信读书**。只抓最新一篇，不支持微信公众平台历史文章批量回补。
+- `GATHER.CONTENT_AUTO_CHECK=False` 禁止原有自动补抓进入耗时的浏览器提取逻辑；`ENABLE_JOB=False` 在微信读书授权和单篇采集验收完成前维持关闭。
+- 微信读书授权就绪后，先手动采集目标 Feed 验证全文、图片和 RSS，再添加合适的低频定时任务；不要在风控后进行密集重试。
 
 ## 具备隔离环境与 Docker 时的人工构建步骤
 

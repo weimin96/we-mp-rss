@@ -30,6 +30,8 @@ RUN python -m venv "/app/env_$(uname -m)" \
     && "/app/env_$(uname -m)/bin/python" -m playwright install --with-deps webkit chromium
 
 COPY . .
+RUN test ! -e /app/deploy/security/.env.source \
+    && test ! -e /app/deploy/security/.edge-pass
 COPY config.example.yaml /app/config.yaml
 RUN printf '%s\n' \
       'export PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers' \
