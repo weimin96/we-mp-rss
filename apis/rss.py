@@ -211,6 +211,8 @@ async def get_mp_articles_source(
         # 查询公众号信息
         feed = session.query(Feed)
         query=session.query(Feed, Article).join(Article, Feed.id == Article.mp_id)
+        if cfg.get("rss.fulltext_only", False):
+            query = query.filter(Article.has_content == 1, Article.content.isnot(None), Article.content != "")
         rss_domain = str(cfg.get("rss.base_url", str(request.base_url))).rstrip("/") + "/"
         if tag_id is not None:
             feed_link = f"{rss_domain}feed/tag/{tag_id}.{ext}"

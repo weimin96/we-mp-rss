@@ -283,7 +283,7 @@ class MpsWereadMP(MpsWeread):
             )
         return payload
 
-    def _is_article_gathered(self, mp_id: str, review_id: str) -> bool:
+    def _is_article_gathered(self, mp_id: str, review_id: str, require_content: bool = False) -> bool:
         """判断 reviewId 是否已入库（跨会话增量，避免重复推送）。
 
         Article.id 存储格式为 ``{mp_id}-{aid}`` 并去掉 ``MP_WXS_`` 前缀，
@@ -297,11 +297,15 @@ class MpsWereadMP(MpsWeread):
         session = DB.get_session()
         try:
             stored_id = f"{mp_id}-{review_id}".replace("MP_WXS_", "")
-            row = session.query(Article.id).filter(
+            row = session.query(Article.id, Article.has_content, Article.content).filter(
                 Article.mp_id == mp_id,
                 Article.id == stored_id,
             ).first()
-            return row is not None
+            if row is None:
+                return False
+            if require_content:
+                return bool(row.has_content and (row.content or "").strip())
+            return True
         except Exception:
             return False
         finally:
@@ -347,7 +351,7 @@ class MpsWereadMP(MpsWeread):
             )
 
         # 跨会话增量：最新文章已入库则无需重复采集
-        if self._is_article_gathered(Mps_id, review_id):
+        if self._is_article_gathered(Mps_id, review_id, require_content=gather_content):
             print_info(f"无新文章：最新《{title}》已在库中，跳过")
             return self._get_feed_update_time(Mps_id)
 
@@ -376,6 +380,9 @@ class MpsWereadMP(MpsWeread):
                 item["content"] = self._get_mp_content(review_id)
             except WereadMPAPIError as exc:
                 logger.warning(f"微信读书正文获取失败 [{review_id}]: {exc}")
+                raise
+            if not (item["content"] or "").strip():
+                raise WereadMPAPIError("content_incomplete", "latest article has no full text")
         if CallBack is not None:
             super().FillBack(
                 CallBack=CallBack,
@@ -441,7 +448,7 @@ class MpsWereadMP(MpsWeread):
                 if super().HasGathered(item["aid"]):
                     continue
                 publish_time = int(item.get("update_time") or item.get("create_time") or 0)
-                if self._is_article_gathered(Mps_id, item["aid"]):
+                if self._is_article_gathered(Mps_id, item["aid"], require_content=gather_content):
                     reached_gathered = True
                     continue
                 item["mp_id"] = Mps_id

@@ -328,6 +328,35 @@ class WereadMpCollectorTest(unittest.TestCase):
         collector.update_mps.assert_called_once()
 
     @patch("core.wx.base.RSS.clear_cache")
+    def test_cover_fulltext_failure_does_not_save_metadata_or_mark_synced(self, _clear_cache):
+        collector = self.make_collector()
+        collector._get_mp_articles_page = Mock(
+            side_effect=WereadMPAPIError(-2041, "list blocked", retriable=False)
+        )
+        collector._get_mp_cover = Mock(return_value={
+            "reviewId": "MP_WXS_1_new", "title": "New article",
+        })
+        collector._get_mp_content = Mock(
+            side_effect=WereadMPAPIError(-2012, "quota exhausted", retriable=False)
+        )
+        collector._is_article_gathered = Mock(return_value=False)
+        saved = []
+
+        with self.assertRaises(WereadMPAPIError) as caught:
+            collector.get_Articles(
+                Mps_id="MP_WXS_1", Mps_title="Feed title",
+                CallBack=lambda article: saved.append(article) or True,
+                Gather_Content=True, MaxPage=1,
+            )
+
+        self.assertEqual(caught.exception.code, -2012)
+        self.assertEqual(saved, [])
+        collector.update_mps.assert_not_called()
+        collector._is_article_gathered.assert_called_with(
+            "MP_WXS_1", "MP_WXS_1_new", require_content=True
+        )
+
+    @patch("core.wx.base.RSS.clear_cache")
     def test_pagination_counts_groups_not_articles(self, _clear_cache):
         collector = self.make_collector()
         collector._get_mp_articles_page = Mock(side_effect=[
@@ -361,7 +390,7 @@ class WereadMpCollectorTest(unittest.TestCase):
         collector._get_feed_update_time.return_value = 1778580001
         collector._get_catchup_page_limit = Mock(return_value=3)
         collector._is_article_gathered = Mock(
-            side_effect=lambda mp_id, aid: aid == "MP_WXS_1_old"
+            side_effect=lambda mp_id, aid, require_content=False: aid == "MP_WXS_1_old"
         )
         collector._get_mp_articles_page = Mock(side_effect=[
             {
@@ -412,7 +441,7 @@ class WereadMpCollectorTest(unittest.TestCase):
         collector = self.make_collector()
         collector._get_feed_update_time.return_value = 1778700000
         collector._is_article_gathered = Mock(
-            side_effect=lambda mp_id, aid: aid == "MP_WXS_1_latest"
+            side_effect=lambda mp_id, aid, require_content=False: aid == "MP_WXS_1_latest"
         )
         collector._get_mp_articles_page = Mock(return_value={
             "reviews": [{

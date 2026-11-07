@@ -1,7 +1,7 @@
 # Source-built WeRSS deployment; expose only through the authenticated HTTPS proxy.
 services:
   we-mp-rss:
-    image: local/we-mp-rss:source-9fd4edb-hardened-authz
+    image: local/we-mp-rss:source-9fd4edb-hardened-fulltext
     build:
       context: ..
       dockerfile: deploy/security/Dockerfile
@@ -25,6 +25,7 @@ services:
       GATHER.CONTENT_AUTO_CHECK: "False"
       WEREAD_CONTENT_INTERVAL: "2"
       RSS_FULL_CONTEXT: "True"
+      RSS_FULLTEXT_ONLY: "True"
       RSS_ADD_COVER: "True"
       RSS_BASE_URL: https://werss.wiblog.cn/
       HEADLESS: "true"

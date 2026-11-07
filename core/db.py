@@ -158,10 +158,23 @@ class Db:
                art.id=f"{str(art.mp_id)}-{art.id}".replace("MP_WXS_","") # type: ignore
             if check_exist:
                 # 检查文章是否已存在
-                existing_article = session.query(Article.id,Article.publish_time,Article.status,Article.item_show_type,Article.description,Article.title).filter(
+                existing_article = session.query(Article).filter(
                     (Article.url == art.url) | (Article.id == art.id)
                 ).first()
                 if existing_article is not None:
+                    # A previous metadata-only insert must not prevent a later
+                    # successful fulltext fetch from repairing the same record.
+                    if (art.content or "").strip() and not (existing_article.content or "").strip():
+                        from core.article_content import is_usable_article_content
+                        if is_usable_article_content(art.content):
+                            from tools.fix import fix_html, sanitize_utf8
+                            existing_article.content = sanitize_utf8(art.content)
+                            existing_article.content_html = fix_html(existing_article.content)
+                            existing_article.has_content = 1
+                            existing_article.fix_fail_count = 0
+                            existing_article.fetch_started_at = None
+                            session.commit()
+                            return True
                     # 当更新时间和状态都相同时，不需要更新
                     if art.status == existing_article.status and existing_article.publish_time==art.publish_time \
                     and existing_article.item_show_type==art.item_show_type\

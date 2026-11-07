@@ -7,5 +7,9 @@ COPY --chown=10001:10001 core/rss.py /app/core/rss.py
 COPY --chown=10001:10001 tools/fix.py /app/tools/fix.py
 COPY --chown=10001:10001 apis/article.py /app/apis/article.py
 COPY --chown=10001:10001 apis/mps.py /app/apis/mps.py
+COPY --chown=10001:10001 core/db.py /app/core/db.py
+COPY --chown=10001:10001 core/wx/model/weread_mp.py /app/core/wx/model/weread_mp.py
+COPY --chown=10001:10001 apis/rss.py /app/apis/rss.py
+COPY --chown=10001:10001 config.example.yaml /app/config.yaml
 
 USER 10001:10001

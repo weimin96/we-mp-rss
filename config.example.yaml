@@ -91,6 +91,8 @@ rss:
   cover: ${RSS_COVER:-}
   #是否显示全文 默认False
   full_context: ${RSS_FULL_CONTEXT:-True}
+  # Only publish articles whose full body has been successfully persisted.
+  fulltext_only: ${RSS_FULLTEXT_ONLY:-False}
   #是否添加封面图片 默认False
   add_cover: ${RSS_ADD_COVER:-True}
   #RSS正文是否启用 CDATA
