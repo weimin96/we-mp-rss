@@ -65,6 +65,11 @@ def main() -> int:
     state = load_state()
     blocked_until = int(state.get("blocked_until", 0))
     if now < blocked_until:
+        # Distinguish a timer tick intentionally skipped under cooldown from
+        # an actual collection attempt (state['runs']).
+        state["skipped_runs"] = int(state.get("skipped_runs", 0)) + 1
+        state["last_skipped_at"] = now
+        save_state(state)
         print(f"WeRSS poll: cooldown active until {local_time(blocked_until)}; requests=0")
         return 0
 
