@@ -1,7 +1,7 @@
-# Source-built WeRSS deployment; expose only through the authenticated HTTPS proxy.
+# Source-built WeRSS deployment; admin UI uses app authentication via HTTPS.
 services:
   we-mp-rss:
-    image: local/we-mp-rss:source-9fd4edb-hardened-errors
+    image: local/we-mp-rss:source-9fd4edb-hardened-ui-authfree
     build:
       context: ..
       dockerfile: deploy/security/Dockerfile

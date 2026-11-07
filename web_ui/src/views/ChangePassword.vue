@@ -117,8 +117,13 @@ const validateConfirmPassword = (value: string, callback: any) => {
   }
 }
 
+const validateCurrentPassword = (value: string, callback: any) => {
+  // Old credentials may be longer than the new-password policy.
+  callback(value ? undefined : '请输入当前密码')
+}
+
 const rules = {
-  currentPassword: [{ validator: validatePassword, trigger: 'blur' }],
+  currentPassword: [{ validator: validateCurrentPassword, trigger: 'blur' }],
   newPassword: [{ validator: validatePassword, trigger: 'blur' }],
   confirmPassword: [{ validator: validateConfirmPassword, trigger: 'blur' }]
 }

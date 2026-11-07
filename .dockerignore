@@ -11,6 +11,8 @@ env
 data
 data1
 dist
+!web_ui/dist
+!web_ui/dist/**
 build
 ref
 web_ui/node_modules
