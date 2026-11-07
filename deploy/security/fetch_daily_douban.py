@@ -13,27 +13,37 @@ import tempfile
 import time
 from pathlib import Path
 
+from core.weread_error_policy import classify_weread_error, cooldown_seconds
+
 
 FEED_ID = "MP_WXS_2391391020"
 STATE_FILE = Path("data/daily_douban_poll_state.json")
+RENEWAL_STATUS_FILE = Path("data/weread_renewal_status.json")
 LIST_PROBE_SECONDS = 24 * 3600
 
 
-def classify_error(code) -> str:
-    if str(code) == "-2012":
-        return "auth_or_restricted"
-    if str(code) in {"499", "-2014", "-2041"}:
-        return "request_restricted"
-    if str(code) in {"timeout", "network_error"}:
-        return "network_error"
-    return "other_error"
+def classify_error(code, source="business") -> str:
+    """Compatibility wrapper for the canonical WeRead error policy."""
+    return classify_weread_error(code, source=source)
 
 
-def cooldown_seconds(category: str, failures: int) -> int:
-    base = {"auth_or_restricted": 12 * 3600,
-            "request_restricted": 12 * 3600,
-            "network_error": 2 * 3600}.get(category, 4 * 3600)
-    return min(base * (2 ** min(max(failures - 1, 0), 3)), 48 * 3600)
+def resume_after_renewal(state: dict, renewal: dict) -> bool:
+    """Allow one auth retry after a *new*, successful cookie rotation.
+
+    Do not clear unrelated rate-limit or endpoint-rejection cooldowns.
+    """
+    if state.get("last_error_category") not in ("auth_required", "auth_or_restricted"):
+        return False
+    renewed_at = int(renewal.get("last_success_at", 0))
+    if (renewal.get("last_result") != "success"
+            or not renewal.get("last_rotated")
+            or renewed_at <= int(state.get("last_run_at", 0))
+            or renewed_at <= int(state.get("last_auth_retry_renewed_at", 0))):
+        return False
+    state["blocked_until"] = 0
+    state["consecutive_failures"] = 0
+    state["last_auth_retry_renewed_at"] = renewed_at
+    return True
 
 
 def load_state() -> dict:
@@ -63,6 +73,11 @@ def local_time(timestamp: int) -> str:
 def main() -> int:
     now = int(time.time())
     state = load_state()
+    if RENEWAL_STATUS_FILE.exists():
+        renewal = json.loads(RENEWAL_STATUS_FILE.read_text(encoding="utf-8"))
+        if resume_after_renewal(state, renewal):
+            save_state(state)
+            print("WeRSS poll: new renewed session detected; auth cooldown lifted")
     blocked_until = int(state.get("blocked_until", 0))
     if now < blocked_until:
         # Distinguish a timer tick intentionally skipped under cooldown from
@@ -119,21 +134,33 @@ def main() -> int:
         state["last_success_at"] = now
         state["last_error_code"] = None
         state["last_error_category"] = None
+        state["last_error_source"] = None
+        state["last_error_endpoint"] = None
+        state["last_http_status"] = None
+        state["last_business_code"] = None
         save_state(state)
         print(f"WeRSS poll: ok mode={list_mode} added={added} repaired={repaired} "
               f"requests={stats['total']} by_endpoint={stats['by_endpoint']}")
         return 0
 
     code = getattr(error, "code", type(error).__name__)
-    category = classify_error(code)
+    source = getattr(error, "source", "internal")
+    category = classify_error(code, source=source)
     failures = int(state.get("consecutive_failures", 0)) + 1
     next_retry = now + cooldown_seconds(category, failures)
     state["consecutive_failures"] = failures
     state["blocked_until"] = next_retry
     state["last_error_code"] = str(code)
     state["last_error_category"] = category
+    state["last_error_source"] = source
+    state["last_http_status"] = getattr(error, "http_status", None)
+    state["last_business_code"] = str(code) if source == "business" else None
+    # Endpoint path only, never URL query strings or credentials.
+    state["last_error_endpoint"] = getattr(error, "endpoint", None)
     save_state(state)
-    print(f"WeRSS poll: failed category={category} code={code} mode={list_mode} "
+    print(f"WeRSS poll: failed category={category} source={source} code={code} "
+          f"http={state['last_http_status']} "
+          f"endpoint={state['last_error_endpoint']} mode={list_mode} "
           f"requests={stats['total']} by_endpoint={stats['by_endpoint']} "
           f"next_retry_after={local_time(next_retry)}", file=sys.stderr)
     return 1

@@ -193,12 +193,29 @@ class WereadMpRequestTest(unittest.TestCase):
             collector._get_mp_content("MP_WXS_1_review")
 
         self.assertEqual(caught.exception.code, -2012)
+        self.assertEqual(caught.exception.source, "business")
+        self.assertEqual(caught.exception.endpoint, "/web/mp/content")
+        self.assertEqual(caught.exception.http_status, 200)
         self.assertIn("登录状态异常或访问受限", str(caught.exception))
         self.assertNotIn("配额均已耗尽", str(caught.exception))
         self.assertEqual(collector.weread_request_stats(), {
             "total": 1,
             "by_endpoint": {"/web/mp/content": 1},
         })
+
+    @patch("requests.get")
+    def test_http_401_has_its_own_error_source(self, get):
+        get.return_value = Mock(status_code=401)
+        collector = self.make_collector()
+        collector._current_account_idx = 0
+        collector._weread_accounts = [{"cookie": collector._weread_cookies}]
+        with self.assertRaises(WereadMPAPIError) as caught:
+            collector._get_mp_content("MP_WXS_1_review")
+        self.assertEqual(caught.exception.code, 401)
+        self.assertEqual(caught.exception.source, "http")
+        self.assertEqual(caught.exception.endpoint, "/web/mp/content")
+        self.assertEqual(caught.exception.http_status, 401)
+        self.assertEqual(collector.weread_request_stats()["total"], 1)
 
     @patch("requests.get")
     def test_article_list_allows_missing_ticket(self, get):
@@ -599,7 +616,9 @@ class WereadMpCollectorTest(unittest.TestCase):
             }]
         })
         collector._get_mp_content = Mock(
-            side_effect=WereadMPAPIError(503, "content unavailable")
+            side_effect=WereadMPAPIError(
+                503, "content unavailable", source="http", endpoint="/web/mp/content"
+            )
         )
         saved = []
 
@@ -613,7 +632,9 @@ class WereadMpCollectorTest(unittest.TestCase):
                 interval=0,
             )
 
-        self.assertEqual(caught.exception.code, "content_incomplete")
+        self.assertEqual(caught.exception.code, 503)
+        self.assertEqual(caught.exception.source, "http")
+        self.assertEqual(caught.exception.endpoint, "/web/mp/content")
         self.assertEqual(saved, [])
         collector.update_mps.assert_not_called()
 

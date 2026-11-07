@@ -194,16 +194,19 @@ class MpsWeread(WxGather):
             except requests.RequestException as exc:
                 raise WereadMPAPIError("network_error", str(exc)) from exc
 
-            # 对业务码分类，但不能由 -2012 推断账号配额确实耗尽。
+            # HTTP 状态和业务码是不同命名空间，不合并为“配额耗尽”。
             access_error_code = None
-            if resp.status_code == 499:
-                access_error_code = 499
+            error_source = None
+            if resp.status_code in (401, 403, 429, 499):
+                access_error_code = resp.status_code
+                error_source = "http"
             elif resp.status_code == 200:
                 try:
                     payload = resp.json()
                     code = int(payload.get("errcode", payload.get("errCode", 0)) or 0)
-                    if code in (-2014, -2041, -2012):
+                    if code in (-2014, -2041, -2012, -2010):
                         access_error_code = code
+                        error_source = "business"
                 except (ValueError, TypeError, AttributeError):
                     pass
 
@@ -219,15 +222,22 @@ class MpsWeread(WxGather):
                     continue
                 self._weread_access_restricted = True
                 reason = {
-                    499: "请求被限制（HTTP 499）",
-                    -2014: "请求受限（具体配额未知）",
-                    -2041: "接口拒绝访问（可能限流或接口策略变化）",
-                    -2012: "登录状态异常或访问受限（不能据此判断配额耗尽）",
-                }[access_error_code]
+                    ("http", 401): "HTTP 401，登录凭证无效或过期",
+                    ("http", 403): "HTTP 403，当前请求被拒绝",
+                    ("http", 429): "HTTP 429，请求速率受限",
+                    ("http", 499): "HTTP 499，非标准终止/限制响应（原因未确认）",
+                    ("business", -2014): "业务码 -2014，访问受限（配额未知）",
+                    ("business", -2041): "业务码 -2041，接口拒绝访问或策略限制",
+                    ("business", -2012): "登录状态异常或访问受限（不能据此判断配额耗尽）",
+                    ("business", -2010): "业务码 -2010，登录或会话异常",
+                }[(error_source, access_error_code)]
                 raise WereadMPAPIError(
                     access_error_code,
                     f"{reason}；已检查 {len(tried_accounts)} 个账号",
                     retriable=False,
+                    source=error_source,
+                    endpoint=endpoint,
+                    http_status=resp.status_code,
                 )
 
             self._weread_access_restricted = False

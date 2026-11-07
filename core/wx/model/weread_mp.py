@@ -15,11 +15,15 @@ WEREAD_WEB_BASE = "https://weread.qq.com"
 
 
 class WereadMPAPIError(Exception):
-    def __init__(self, code, message, retriable=True):
+    def __init__(self, code, message, retriable=True, source=None, endpoint=None,
+                 http_status=None):
         super().__init__(f"WeRead MP API error {code}: {message}")
         self.code = code
         self.message = message
         self.retriable = retriable
+        self.source = source or ("business" if isinstance(code, int) and code < 0 else "internal")
+        self.endpoint = endpoint
+        self.http_status = http_status
 
 
 def build_mp_url(original_id: str) -> str:
@@ -69,6 +73,8 @@ def _raise_response_error(payload: dict):
         code,
         message,
         retriable=code not in (-2041, -2012, -2010),
+        source="business",
+        http_status=200,
     )
 
 
@@ -239,6 +245,8 @@ class MpsWereadMP(MpsWeread):
             raise WereadMPAPIError(
                 response.status_code,
                 f"article list returned HTTP {response.status_code}",
+                source="http", endpoint="/web/mp/articles",
+                http_status=response.status_code,
             )
         try:
             payload = response.json()
@@ -246,7 +254,11 @@ class MpsWereadMP(MpsWeread):
             raise WereadMPAPIError("invalid_json", "article list is not JSON") from exc
         if not isinstance(payload, dict):
             raise WereadMPAPIError("invalid_response", "article list is not an object")
-        _raise_response_error(payload)
+        try:
+            _raise_response_error(payload)
+        except WereadMPAPIError as exc:
+            exc.endpoint = "/web/mp/articles"
+            raise
         return payload
 
     def _get_mp_cover(self, book_id: str) -> dict:
@@ -267,6 +279,8 @@ class MpsWereadMP(MpsWeread):
             raise WereadMPAPIError(
                 response.status_code,
                 f"mp cover returned HTTP {response.status_code}",
+                source="http", endpoint="/api/mp/cover",
+                http_status=response.status_code,
             )
         try:
             payload = response.json()
@@ -275,7 +289,11 @@ class MpsWereadMP(MpsWeread):
         if not isinstance(payload, dict):
             raise WereadMPAPIError("invalid_response", "mp cover is not an object")
         if not payload.get("reviewId"):
-            _raise_response_error(payload)
+            try:
+                _raise_response_error(payload)
+            except WereadMPAPIError as exc:
+                exc.endpoint = "/api/mp/cover"
+                raise
             raise WereadMPAPIError(
                 "empty_cover",
                 "公众号未返回最新文章（可能从未在微信读书内发布过文章）",
@@ -325,6 +343,8 @@ class MpsWereadMP(MpsWeread):
             raise WereadMPAPIError(
                 response.status_code,
                 f"article content returned HTTP {response.status_code}",
+                source="http", endpoint="/web/mp/content",
+                http_status=response.status_code,
             )
         return extract_mp_content(response.text)
 
@@ -502,7 +522,7 @@ class MpsWereadMP(MpsWeread):
                         item["content"] = self._get_mp_content(item["aid"])
                     except WereadMPAPIError as exc:
                         logger.warning(f"微信读书正文获取失败 [{item['aid']}]: {exc}")
-                        content_failures.append(item["aid"])
+                        content_failures.append(exc)
                         continue
                 if CallBack is not None:
                     super().FillBack(
@@ -523,9 +543,14 @@ class MpsWereadMP(MpsWeread):
                 break
 
         if content_failures:
+            first_error = content_failures[0]
             raise WereadMPAPIError(
-                "content_incomplete",
+                first_error.code,
                 f"{len(content_failures)} article bodies could not be fetched",
+                retriable=first_error.retriable,
+                source=first_error.source,
+                endpoint=first_error.endpoint or "/web/mp/content",
+                http_status=first_error.http_status,
             )
         if not reached_gathered:
             raise WereadMPAPIError(
