@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh WeRead session before Daily Douban polling
+Wants=network-online.target
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/we-mp-rss/source/deploy/security/run-weread-renewal.sh
+TimeoutStartSec=45
+NoNewPrivileges=true

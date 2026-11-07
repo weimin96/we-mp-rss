@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh WeRead web session shortly before feed polling
+
+[Timer]
+OnCalendar=*-*-* 01,05,09,13,17,21:55:00
+Persistent=false
+Unit=we-mp-rss-weread-renew.service
+
+[Install]
+WantedBy=timers.target

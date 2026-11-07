@@ -1,7 +1,7 @@
 # Source-built WeRSS deployment; expose only through the authenticated HTTPS proxy.
 services:
   we-mp-rss:
-    image: local/we-mp-rss:source-9fd4edb-hardened-poll
+    image: local/we-mp-rss:source-9fd4edb-hardened-renew
     build:
       context: ..
       dockerfile: deploy/security/Dockerfile
