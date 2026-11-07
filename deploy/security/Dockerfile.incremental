@@ -14,6 +14,10 @@ COPY --chown=10001:10001 core/weread_session_renewal.py /app/core/weread_session
 COPY --chown=10001:10001 core/weread_error_policy.py /app/core/weread_error_policy.py
 COPY --chown=10001:10001 apis/rss.py /app/apis/rss.py
 COPY --chown=10001:10001 config.example.yaml /app/config.yaml
+# Remove assets from the parent image before copying the new UI so obsolete
+# chunks (including outdated password validation) remain inaccessible.
+USER root
+RUN rm -rf /app/static && mkdir -p /app/static && chown 10001:10001 /app/static
 COPY --chown=10001:10001 web_ui/dist/ /app/static/
 
 USER 10001:10001

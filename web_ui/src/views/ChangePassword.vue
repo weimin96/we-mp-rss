@@ -99,11 +99,6 @@ const validatePassword = (value: string, callback: any) => {
     return
   }
   
-  if (!/[^A-Za-z0-9]/.test(value)) {
-    callback('必须包含至少一个特殊字符')
-    return
-  }
-  
   callback()
 }
 
