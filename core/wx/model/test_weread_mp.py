@@ -181,6 +181,26 @@ class WereadMpRequestTest(unittest.TestCase):
         self.assertEqual(kwargs["headers"]["x-wr-ticket"], "ticket-value")
 
     @patch("requests.get")
+    def test_ambiguous_auth_code_is_not_labeled_quota_and_counted(self, get):
+        response = Mock(status_code=200)
+        response.json.return_value = {"errCode": -2012, "errMsg": "登录超时"}
+        get.return_value = response
+        collector = self.make_collector()
+        collector._current_account_idx = 0
+        collector._weread_accounts = [{"cookie": collector._weread_cookies}]
+
+        with self.assertRaises(WereadMPAPIError) as caught:
+            collector._get_mp_content("MP_WXS_1_review")
+
+        self.assertEqual(caught.exception.code, -2012)
+        self.assertIn("登录状态异常或访问受限", str(caught.exception))
+        self.assertNotIn("配额均已耗尽", str(caught.exception))
+        self.assertEqual(collector.weread_request_stats(), {
+            "total": 1,
+            "by_endpoint": {"/web/mp/content": 1},
+        })
+
+    @patch("requests.get")
     def test_article_list_allows_missing_ticket(self, get):
         response = Mock(status_code=200)
         response.json.return_value = {"reviews": []}
@@ -325,6 +345,24 @@ class WereadMpCollectorTest(unittest.TestCase):
         self.assertEqual(len(saved), 1)
         self.assertEqual(saved[0]["title"], "Latest")
         self.assertEqual(saved[0]["url"], "https://mp.weixin.qq.com/s/latest")
+        collector.update_mps.assert_called_once()
+
+    @patch("core.wx.base.RSS.clear_cache")
+    def test_latest_mode_avoids_blocked_article_list(self, _clear_cache):
+        collector = self.make_collector()
+        collector._get_mp_articles_page = Mock(side_effect=AssertionError("must not probe list"))
+        collector._get_mp_cover = Mock(return_value={
+            "reviewId": "MP_WXS_1_latest", "title": "Latest",
+        })
+        collector._is_article_gathered = Mock(return_value=True)
+
+        collector.get_Articles(
+            Mps_id="MP_WXS_1", Mps_title="Feed title",
+            CallBack=lambda article: True,
+            list_mode="latest",
+        )
+
+        collector._get_mp_articles_page.assert_not_called()
         collector.update_mps.assert_called_once()
 
     @patch("core.wx.base.RSS.clear_cache")

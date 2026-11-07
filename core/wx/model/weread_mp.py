@@ -328,6 +328,47 @@ class MpsWereadMP(MpsWeread):
             )
         return extract_mp_content(response.text)
 
+    def repair_one_missing_fulltext(self, mp_id: str) -> int:
+        """Repair at most one saved metadata-only article per successful poll.
+
+        The article ID already holds the WeRead review ID, so no list/shelf
+        request is needed. Exceptions bubble up for the poller's cooldown.
+        """
+        from core.db import DB
+        from core.models.article import Article
+        from core.models.base import DATA_STATUS
+        from core.article_content import is_usable_article_content
+        from tools.fix import fix_html, sanitize_utf8
+
+        session = DB.get_session()
+        try:
+            article = session.query(Article).filter(
+                Article.mp_id == mp_id,
+                Article.has_content == 0,
+                (Article.content.is_(None) | (Article.content == "")),
+                Article.status != DATA_STATUS.DELETED,
+            ).order_by(Article.publish_time.desc()).first()
+            if article is None:
+                return 0
+
+            prefix = f"{mp_id.replace('MP_WXS_', '')}-"
+            if not article.id.startswith(prefix):
+                raise WereadMPAPIError("invalid_review_id", "article ID has no WeRead review ID")
+            review_id = f"MP_WXS_{article.id[len(prefix):]}"
+            content = self._get_mp_content(review_id)
+            if not is_usable_article_content(content):
+                raise WereadMPAPIError("content_incomplete", "repaired body is empty")
+            article.content = sanitize_utf8(content)
+            article.content_html = fix_html(article.content)
+            article.has_content = 1
+            article.status = DATA_STATUS.ACTIVE
+            article.fix_fail_count = 0
+            article.fetch_started_at = None
+            session.commit()
+            return 1
+        finally:
+            session.close()
+
     def _collect_latest_via_cover(
         self,
         book_id: str,
@@ -507,10 +548,11 @@ class MpsWereadMP(MpsWeread):
         Gather_Content=False,
         Item_Over_CallBack=None,
         Over_CallBack=None,
+        list_mode: str = "auto",
     ):
         """Collect one existing WeChat feed without changing its RSS identity.
 
-        主路径走 ``/web/mp/articles`` 列表接口做增量补抓：从最新一页开始翻页，
+        ``list_mode=auto`` 走 ``/web/mp/articles`` 列表接口做增量补抓：
         采集所有尚未入库的文章，遇到已入库文章即停止（上一轮到这一轮之间漏采的
         文章会一并补齐）。列表接口不可用（如 -2012 登录超时 / -2041 等）时回退到
         ``/api/mp/cover`` 只取最新一篇的兜底逻辑，保证采集不中断。
@@ -553,33 +595,38 @@ class MpsWereadMP(MpsWeread):
 
         print_info(f"微信读书公众号采集模式: {Mps_title} ({book_id})")
         try:
-            try:
-                latest_publish_time = self._collect_via_article_list(
-                    book_id,
-                    Mps_id,
-                    Mps_title,
-                    gather_content,
-                    start_page,
-                    MaxPage,
-                    CallBack=CallBack,
-                    Item_Over_CallBack=Item_Over_CallBack,
-                )
-            except WereadMPAPIError as exc:
-                if self.response_valid:
-                    # 列表接口本身可用（已成功翻页），属于正文缺失或补抓不完整
-                    # 等真实错误，直接上抛，下次任务重试。
-                    raise
-                print_warning(
-                    f"[{Mps_title}] 文章列表接口不可用({exc})，回退到仅取最新一篇"
-                )
+            if list_mode == "latest":
+                # Regular low-frequency polling: one cover request, no list probe.
                 latest_publish_time = self._collect_latest_via_cover(
-                    book_id,
-                    Mps_id,
-                    Mps_title,
-                    gather_content,
-                    CallBack=CallBack,
-                    Item_Over_CallBack=Item_Over_CallBack,
+                    book_id, Mps_id, Mps_title, gather_content,
+                    CallBack=CallBack, Item_Over_CallBack=Item_Over_CallBack,
                 )
+            elif list_mode == "auto":
+                try:
+                    latest_publish_time = self._collect_via_article_list(
+                        book_id,
+                        Mps_id,
+                        Mps_title,
+                        gather_content,
+                        start_page,
+                        MaxPage,
+                        CallBack=CallBack,
+                        Item_Over_CallBack=Item_Over_CallBack,
+                    )
+                except WereadMPAPIError as exc:
+                    if self.response_valid:
+                        # Successful list retrieval but incomplete body/backlog:
+                        # keep error instead of hiding behind a cover fallback.
+                        raise
+                    print_warning(
+                        f"[{Mps_title}] 文章列表不可用({exc})，回退最新文章"
+                    )
+                    latest_publish_time = self._collect_latest_via_cover(
+                        book_id, Mps_id, Mps_title, gather_content,
+                        CallBack=CallBack, Item_Over_CallBack=Item_Over_CallBack,
+                    )
+            else:
+                raise ValueError("list_mode must be 'auto' or 'latest'")
 
             self.update_mps(
                 Mps_id,

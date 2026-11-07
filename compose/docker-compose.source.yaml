@@ -1,7 +1,7 @@
 # Source-built WeRSS deployment; expose only through the authenticated HTTPS proxy.
 services:
   we-mp-rss:
-    image: local/we-mp-rss:source-9fd4edb-hardened-fulltext
+    image: local/we-mp-rss:source-9fd4edb-hardened-poll
     build:
       context: ..
       dockerfile: deploy/security/Dockerfile
@@ -24,6 +24,10 @@ services:
       GATHER.CONTENT: "True"
       GATHER.CONTENT_AUTO_CHECK: "False"
       WEREAD_CONTENT_INTERVAL: "2"
+      # This feed is already on the WeRead shelf; skip shelf sync on each poll.
+      WEREAD_AUTO_ADD_TO_SHELF: "false"
+      # Bound optional daily backfill list probing to 3 pages.
+      WEREAD_MP_MAX_PAGES: "3"
       RSS_FULL_CONTEXT: "True"
       RSS_FULLTEXT_ONLY: "True"
       RSS_ADD_COVER: "True"
